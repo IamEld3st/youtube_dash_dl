@@ -59,7 +59,8 @@ def main(ffmpeg_executable):
     if len(sys.argv) > 3:
         req_time = datetime.datetime.strptime(data.split("yt:mpdRequestTime=\"")[-1].split("\"")[0], "%Y-%m-%dT%H:%M:%S.%f")
         start_time = datetime.datetime.strptime(sys.argv[3], "%Y-%m-%dT%H:%M")
-        segments_back = round((req_time - start_time).seconds / 2)
+        segments_back = round((req_time - start_time).total_seconds() / 2)
+        segments_back = segments_back if segments_back < max_seg else max_seg
         dur_segments = int(sys.argv[4]) * 30
         start_segment = max_seg - segments_back
         end_segment = start_segment + dur_segments
