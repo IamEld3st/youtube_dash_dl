@@ -88,7 +88,7 @@ if __name__ == "__main__":
             main(".\\bin\\ffmpeg.exe")
         else:
             main("ffmpeg")
-    elif plt == "Linux":
+    elif plt == "Linux" or plt == "Darwin":
         if not shutil.which("ffmpeg"):
             print("Install ffmpeg to path!")
             exit(1)
