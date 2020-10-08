@@ -4,8 +4,9 @@ from io import BytesIO
 import os
 import sys
 
-if not os.path.exists("./bin"):
-    os.mkdir("./bin")
+if not os.path.exists("./bin/ffmpeg.exe"):
+    if not os.path.exists("./bin"):
+        os.mkdir("./bin")
     zip_data = BytesIO()
     res = get("https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip", stream=True)
     total_length = res.headers.get('content-length')
