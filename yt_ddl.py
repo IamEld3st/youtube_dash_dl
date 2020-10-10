@@ -14,6 +14,7 @@ import asyncio
 import aiohttp
 import random
 import subprocess
+import multiprocessing
 
 async def fetch(session, url, i, folder, pbar, sem):
     async with sem, session.get(url) as response:
@@ -27,14 +28,29 @@ async def get_segments(total_segments, video_base, audio_base, tempdir):
     async with aiohttp.ClientSession() as session:
         sem = asyncio.Semaphore(12)
         tasks = []
-        with open(os.path.join(tempdir, "temp-video.txt"), "w+") as video_txt, open(os.path.join(tempdir, "temp-audio.txt"), "w+") as audio_txt:
-            for i in total_segments:
-                video_txt.write(f"file '{os.path.join(tempdir, 'temp-video', f'{i}.ts')}'\n")
-                audio_txt.write(f"file '{os.path.join(tempdir, 'temp-audio', f'{i}.ts')}'\n")
-                tasks.append(asyncio.create_task(fetch(session, f"{video_base}/{i}", i, os.path.join(tempdir, "temp-video"), pbar, sem)))
-                tasks.append(asyncio.create_task(fetch(session, f"{audio_base}/{i}", i, os.path.join(tempdir, "temp-audio"), pbar, sem)))
+        for i in total_segments:
+            tasks.append(asyncio.create_task(fetch(session, f"{video_base}/{i}", i, os.path.join(tempdir, "temp-video"), pbar, sem)))
+            tasks.append(asyncio.create_task(fetch(session, f"{audio_base}/{i}", i, os.path.join(tempdir, "temp-audio"), pbar, sem)))
         await asyncio.wait(tasks)
     pbar.close()
+
+def process_segments(params):
+    ffmpeg_executable = params[0]
+    tempdir = params[1]
+    i = params[2]
+    cmd_avseg = [
+        ffmpeg_executable,
+        "-y",
+        "-i",
+        f"{os.path.join(tempdir, 'temp-video', f'{i}.ts')}",
+        "-i",
+        f"{os.path.join(tempdir, 'temp-audio', f'{i}.ts')}",
+        "-c",
+        "copy",
+        f"{os.path.join(tempdir, 'avseg')}/{i}.ts"
+    ]
+    proc = subprocess.Popen(cmd_avseg, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+    proc.communicate()
 
 def get_mpd_data(video_url):
     with Session() as s:
@@ -210,94 +226,47 @@ def main(ffmpeg_executable):
     asyncio.get_event_loop().run_until_complete(get_segments(total_segments, video_base, audio_base, tempdir))
 
     # merge video and audio segments each into its file
-    total_video = sum(os.path.getsize(os.path.join(tempdir, "temp-video", f)) for f in os.listdir(os.path.join(tempdir, "temp-video")) if os.path.isfile(os.path.join(tempdir, "temp-video", f)))//1024
-    total_audio = sum(os.path.getsize(os.path.join(tempdir, "temp-audio", f)) for f in os.listdir(os.path.join(tempdir, "temp-audio")) if os.path.isfile(os.path.join(tempdir, "temp-audio", f)))//1024
-
-    cmd_video = [
-        ffmpeg_executable,
-        "-y",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        f"{os.path.join(tempdir, 'temp-video.txt')}",
-        "-c",
-        "copy",
-        f"{os.path.join(tempdir, 'temp-video.ts')}"
-    ]
-
-    cmd_audio = [
-        ffmpeg_executable,
-        "-y",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        f"{os.path.join(tempdir, 'temp-audio.txt')}",
-        "-c",
-        "copy",
-        f"{os.path.join(tempdir, 'temp-audio.ts')}"
-    ]
-
-    process_video = subprocess.Popen(cmd_video, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
-    process_audio = subprocess.Popen(cmd_audio, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
-
-    pbar_audio = tqdm(total=total_audio, desc="Merging audio")
-    pbar_video = tqdm(total=total_video, desc="Merging video")
-
-    while True:
-        line_video = process_video.stdout.readline()
-        line_audio = process_audio.stdout.readline()
-        if not line_video and not line_audio: break
-
-        match_video = re.match(r".*size= *(\d+)", line_video)
-        if match_video is not None:
-            video_size = int(match_video[1])
-            pbar_video.update(video_size - pbar_video.n)
-        match_audio = re.match(r".*size= *(\d+)", line_audio)
-        if match_audio is not None:
-            audio_size = int(match_audio[1])
-            pbar_audio.update(audio_size - pbar_audio.n)
-
-    pbar_audio.update(total_audio - pbar_audio.n)
-    pbar_video.update(total_video - pbar_video.n)
-    pbar_audio.close()
-    pbar_video.close()
+    os.mkdir(os.path.join(tempdir, "avseg"))
+    with multiprocessing.Pool(multiprocessing.cpu_count()) as pool:
+        params = ((ffmpeg_executable, tempdir, i) for i in total_segments)
+        list(tqdm(pool.imap_unordered(process_segments, params), total=len(total_segments), desc="Merging segments"))
+        pool.close()
+        pool.join()
     
+    with open(os.path.join(tempdir, "avseg.txt"), "w+") as avseg:
+        for i in total_segments:
+            avseg.write(f"file '{os.path.join(tempdir, 'avseg', f'{i}.ts')}'\n")
+
     shutil.rmtree(os.path.join(tempdir, "temp-video"), ignore_errors=True)
     shutil.rmtree(os.path.join(tempdir, "temp-audio"), ignore_errors=True)
 
-    # merge the two video and audio files into one file
-    temp_video_size = os.path.getsize(os.path.join(tempdir, "temp-video.ts"))//1024
-    temp_audio_size = os.path.getsize(os.path.join(tempdir, "temp-audio.ts"))//1024
-
+    size_avseg_total = sum(os.path.getsize(os.path.join(tempdir, "avseg", f)) for f in os.listdir(os.path.join(tempdir, "avseg")) if os.path.isfile(os.path.join(tempdir, "avseg", f)))//1024
     cmd_final = [
         ffmpeg_executable,
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
         "-i",
-        f"{os.path.join(tempdir, 'temp-video.ts')}",
-        "-i",
-        f"{os.path.join(tempdir, 'temp-audio.ts')}",
+        f"{os.path.join(tempdir, 'avseg.txt')}",
         "-c",
         "copy",
         output_path
     ]
-
     process_final = subprocess.Popen(cmd_final, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
-
-    pbar_final = tqdm(total=temp_video_size+temp_audio_size, desc="Merging final")
+    pbar_final = tqdm(total=size_avseg_total, desc="Merging final")
 
     while True:
-        line = process_final.stdout.readline()
-        if not line: break
+        line_avseg = process_final.stdout.readline()
+        if not line_avseg: break
 
-        match_final = re.match(r".*size= *(\d+)", line)
-        if match_final is not None:
-            video_size = int(match_final[1])
-            pbar_final.update(video_size - pbar_final.n)
+        match_avseg = re.match(r".*size= *(\d+)", line_avseg)
+        if match_avseg is not None:
+            size_avseg = int(match_avseg[1])
+            pbar_final.update(size_avseg - pbar_final.n)
 
-    pbar_final.update(temp_video_size+temp_audio_size - pbar_final.n)
+    pbar_final.update(size_avseg_total - pbar_final.n)
     pbar_final.close()
 
     shutil.rmtree(tempdir, ignore_errors=True)
