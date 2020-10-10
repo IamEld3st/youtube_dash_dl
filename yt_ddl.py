@@ -1,4 +1,4 @@
-from requests import get # requests
+from requests import get, Session # requests
 import sys #
 from bs4 import BeautifulSoup # beautifulsoup4 / lxml
 import urllib.parse #
@@ -10,18 +10,43 @@ import platform
 import shutil
 import re
 import argparse
+import asyncio
+import aiohttp
+import random
+import subprocess
 
+async def fetch(session, url, i, folder, pbar, sem):
+    async with sem, session.get(url) as response:
+        resp = await response.read()
+        with open(os.path.join(folder, f"{str(i)}.ts"), "wb") as f:
+            f.write(resp)
+        pbar.update()
+
+async def get_segments(total_segments, video_base, audio_base, tempdir):
+    pbar = tqdm(total=2*len(total_segments), desc="Downloading segments")
+    async with aiohttp.ClientSession() as session:
+        sem = asyncio.Semaphore(12)
+        tasks = []
+        with open(os.path.join(tempdir, "temp-video.txt"), "w+") as video_txt, open(os.path.join(tempdir, "temp-audio.txt"), "w+") as audio_txt:
+            for i in total_segments:
+                video_txt.write(f"file '{os.path.join(tempdir, 'temp-video', f'{i}.ts')}'\n")
+                audio_txt.write(f"file '{os.path.join(tempdir, 'temp-audio', f'{i}.ts')}'\n")
+                tasks.append(asyncio.create_task(fetch(session, f"{video_base}/{i}", i, os.path.join(tempdir, "temp-video"), pbar, sem)))
+                tasks.append(asyncio.create_task(fetch(session, f"{audio_base}/{i}", i, os.path.join(tempdir, "temp-audio"), pbar, sem)))
+        await asyncio.wait(tasks)
+    pbar.close()
 
 def get_mpd_data(video_url):
-    raw_page = get(video_url)
-    soup = BeautifulSoup(raw_page.text, 'lxml')
-    script_obj = str(soup(id="player-wrap")[0].find_all("script")[1]).split("\\\"")
-    for i in range(len(script_obj)):
-        if script_obj[i] == "dashManifestUrl":
-            mpd_url = script_obj[i+2]
-            break
-    mpd_url = urllib.parse.unquote(mpd_url).replace("\/", "/")
-    mpd_file_content = get(mpd_url)
+    with Session() as s:
+        raw_page = s.get(video_url)
+        soup = BeautifulSoup(raw_page.text, 'lxml')
+        script_obj = str(soup(id="player-wrap")[0].find_all("script")[1]).split("\\\"")
+        for i in range(len(script_obj)):
+            if script_obj[i] == "dashManifestUrl":
+                mpd_url = script_obj[i+2]
+                break
+        mpd_url = urllib.parse.unquote(mpd_url).replace("\/", "/")
+        mpd_file_content = s.get(mpd_url)
     return mpd_file_content.text
 
 def get_best_representation(mpd_data):
@@ -159,9 +184,6 @@ def main(ffmpeg_executable):
                     os.remove(output_path)
                     break
 
-    video_file = open("video.ts", "wb")
-    audio_file = open("audio.ts", "wb")
-
     if start_time:
         req_time = datetime.strptime(data.split("yt:mpdRequestTime=\"")[-1].split("\"")[0], "%Y-%m-%dT%H:%M:%S.%f").replace(tzinfo=timezone.utc).astimezone()
         segments_back = round((req_time - start_time).total_seconds() / 2)
@@ -173,16 +195,112 @@ def main(ffmpeg_executable):
     else:
         total_segments = range(max_seg)
 
-    for i in tqdm(total_segments):
-        video_file.write(get(f"{video_base}/{i}").content)
-        audio_file.write(get(f"{audio_base}/{i}").content)
+    # make a temporary directory in the output file's directory
+    tempdir_parent = os.path.dirname(os.path.abspath(os.path.realpath(output_path)))
+    tempdir = ".temp-" + str(random.randint(1000,9999))
+    while os.path.exists(tempdir):
+        tempdir = ".temp-" + str(random.randint(1000,9999))
+    tempdir = os.path.join(tempdir_parent, tempdir)
+    os.mkdir(tempdir)
 
-    video_file.close()
-    audio_file.close()
+    os.mkdir(os.path.join(tempdir, "temp-video"))
+    os.mkdir(os.path.join(tempdir, "temp-audio"))
 
-    os.system(f"{ffmpeg_executable} -hide_banner -loglevel 0 -i audio.ts -i video.ts -c copy {output_path}")
-    os.remove("video.ts")
-    os.remove("audio.ts")
+    # get video and audio segments asynchronously
+    asyncio.get_event_loop().run_until_complete(get_segments(total_segments, video_base, audio_base, tempdir))
+
+    # merge video and audio segments each into its file
+    total_video = sum(os.path.getsize(os.path.join(tempdir, "temp-video", f)) for f in os.listdir(os.path.join(tempdir, "temp-video")) if os.path.isfile(os.path.join(tempdir, "temp-video", f)))//1024
+    total_audio = sum(os.path.getsize(os.path.join(tempdir, "temp-audio", f)) for f in os.listdir(os.path.join(tempdir, "temp-audio")) if os.path.isfile(os.path.join(tempdir, "temp-audio", f)))//1024
+
+    cmd_video = [
+        ffmpeg_executable,
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        f"{os.path.join(tempdir, 'temp-video.txt')}",
+        "-c",
+        "copy",
+        f"{os.path.join(tempdir, 'temp-video.ts')}"
+    ]
+
+    cmd_audio = [
+        ffmpeg_executable,
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        f"{os.path.join(tempdir, 'temp-audio.txt')}",
+        "-c",
+        "copy",
+        f"{os.path.join(tempdir, 'temp-audio.ts')}"
+    ]
+
+    process_video = subprocess.Popen(cmd_video, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+    process_audio = subprocess.Popen(cmd_audio, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+
+    pbar_audio = tqdm(total=total_audio, desc="Merging audio")
+    pbar_video = tqdm(total=total_video, desc="Merging video")
+
+    while True:
+        line_video = process_video.stdout.readline()
+        line_audio = process_audio.stdout.readline()
+        if not line_video and not line_audio: break
+
+        match_video = re.match(r".*size= *(\d+)", line_video)
+        if match_video is not None:
+            video_size = int(match_video[1])
+            pbar_video.update(video_size - pbar_video.n)
+        match_audio = re.match(r".*size= *(\d+)", line_audio)
+        if match_audio is not None:
+            audio_size = int(match_audio[1])
+            pbar_audio.update(audio_size - pbar_audio.n)
+
+    pbar_audio.update(total_audio - pbar_audio.n)
+    pbar_video.update(total_video - pbar_video.n)
+    pbar_audio.close()
+    pbar_video.close()
+    
+    shutil.rmtree(os.path.join(tempdir, "temp-video"), ignore_errors=True)
+    shutil.rmtree(os.path.join(tempdir, "temp-audio"), ignore_errors=True)
+
+    # merge the two video and audio files into one file
+    temp_video_size = os.path.getsize(os.path.join(tempdir, "temp-video.ts"))//1024
+    temp_audio_size = os.path.getsize(os.path.join(tempdir, "temp-audio.ts"))//1024
+
+    cmd_final = [
+        ffmpeg_executable,
+        "-i",
+        f"{os.path.join(tempdir, 'temp-video.ts')}",
+        "-i",
+        f"{os.path.join(tempdir, 'temp-audio.ts')}",
+        "-c",
+        "copy",
+        output_path
+    ]
+
+    process_final = subprocess.Popen(cmd_final, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+
+    pbar_final = tqdm(total=temp_video_size+temp_audio_size, desc="Merging final")
+
+    while True:
+        line = process_final.stdout.readline()
+        if not line: break
+
+        match_final = re.match(r".*size= *(\d+)", line)
+        if match_final is not None:
+            video_size = int(match_final[1])
+            pbar_final.update(video_size - pbar_final.n)
+
+    pbar_final.update(temp_video_size+temp_audio_size - pbar_final.n)
+    pbar_final.close()
+
+    shutil.rmtree(tempdir, ignore_errors=True)
 
 if __name__ == "__main__":
     plt = platform.system()
