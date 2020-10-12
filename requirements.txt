@@ -1,7 +1,5 @@
-requests
-beautifulsoup4
+av
+click
 lxml
-mpegdash
+requests
 tqdm
-colorama
-aiohttp
