@@ -275,6 +275,9 @@ def main(**kwargs):
         return 0
 
     download_threads = cpu_count() if kwargs['download_threads'] == None else kwargs['download_threads']
+    if download_threads > 4:
+        # This is here until we figure out how to use youtube cookies as to not get blocked
+        download_threads = 4
 
     
     if check_if_exists(kwargs["output"]):
