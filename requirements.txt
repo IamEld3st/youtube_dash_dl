@@ -3,3 +3,5 @@ beautifulsoup4
 lxml
 mpegdash
 tqdm
+colorama
+aiohttp
