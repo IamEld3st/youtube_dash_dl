@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from requests import get, Session # requests
 import sys #
 from bs4 import BeautifulSoup # beautifulsoup4 / lxml
