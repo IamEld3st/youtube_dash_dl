@@ -1,0 +1,5 @@
+# Rename to config.toml and supply valid urls for all shortcuts before use
+[shortcuts]
+
+example1 = "example_url"
+example2 = "example_url"

@@ -15,6 +15,7 @@ import aiohttp
 import random
 import subprocess
 import multiprocessing
+import toml
 
 async def fetch(session, url, i, folder, pbar, sem):
     async with sem, session.get(url) as response:
@@ -145,6 +146,13 @@ def main(ffmpeg_executable):
     output_path = args.output
     start_time = None
     duration_secs = None
+
+    try:
+        CONFIG = toml.load("config.toml")
+        if url in CONFIG["shortcuts"]:
+            url = CONFIG["shortcuts"][url]
+    except (FileNotFoundError, KeyError):
+        pass
 
     def arg_fail(message):
         print(message, file=sys.stderr)

@@ -5,3 +5,4 @@ mpegdash
 tqdm
 colorama
 aiohttp
+toml
