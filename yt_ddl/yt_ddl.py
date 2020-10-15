@@ -185,7 +185,7 @@ def parse_datetime(inp, utc=True):
             today = datetime.today()
             if not ('d' in fmt):
                 d_time = d_time.replace(year=today.year, month=today.month,day=today.day)
-            if not ('y' in fmt):
+            if not ('Y' in fmt):
                 d_time = d_time.replace(year=today.year)
             if utc:
                 return d_time
