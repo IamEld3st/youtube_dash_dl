@@ -3,3 +3,4 @@ click
 lxml
 requests
 tqdm
+setuptools

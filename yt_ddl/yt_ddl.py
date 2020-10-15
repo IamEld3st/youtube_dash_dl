@@ -1,14 +1,17 @@
+import json
 import os
 import re
 import sys
 import time
 from datetime import datetime, timedelta
+from distutils.version import LooseVersion
 from io import BytesIO
 from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
 
 import av                                   # av
 import click                                # click
+import pkg_resources                        # setuptools
 from lxml import etree                      # lxml
 from lxml.etree import QName, SubElement    # lxml
 from requests import get                    # requests
@@ -214,6 +217,21 @@ def parse_duration(inp):
                 total_seconds += int(chunk[:-1])
         return total_seconds
 
+def check_for_update():
+    # Ugly code... if you have a better idea please help
+    try:
+        local_version = LooseVersion(pkg_resources.get_distribution("youtube_dash_dl").version)
+    except:
+        return
+    try:
+        req = get("https://pypi.org/pypi/youtube-dash-dl/json")
+        online_version = LooseVersion(json.loads(req.text)['info']['version'])
+    except:
+        return
+
+    if online_version > local_version:
+        print(f"Update avaliable!\nYou should probably update with 'pip install --upgrade youtube_dash_dl'\nLocal version: {local_version} | Online version: {online_version}\n")
+
 
 @click.command()
 @click.argument("url")
@@ -227,6 +245,8 @@ def parse_duration(inp):
 @click.option("-d", "--duration", help="Duration of the download.")
 @click.option("-o", "--output", help="Output file path.")
 def main(**kwargs):
+    check_for_update()
+
     mpd_data = get_mpd_data(kwargs["url"])
     a, v, m, s = process_mpd(mpd_data)
 
