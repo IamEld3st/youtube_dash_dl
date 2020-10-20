@@ -64,6 +64,9 @@ def process_mpd(mpd_data):
         + len(tree.findall(".//def:S", nsmap))
         - 1
     )
+    # Float stupidity for now cause Python doesnt know how to parse this
+    # TODO: Make segments actually work without these workarounds
+    seg_len = int(float(root.attrib["minimumUpdatePeriod"][2:-1]))
     attribute_sets = tree.findall(".//def:Period/def:AdaptationSet", nsmap)
     v_streams = []
     a_streams = []
@@ -81,7 +84,7 @@ def process_mpd(mpd_data):
                 v_streams.append(Stream(stream_type, bitrate, codec, quality, base_url))
     a_streams.sort(key=lambda x: x.bitrate, reverse=True)
     v_streams.sort(key=lambda x: x.bitrate, reverse=True)
-    return a_streams, v_streams, total_seg, d_time
+    return a_streams, v_streams, total_seg, d_time, seg_len
 
 
 def info(a, v, m, s):
@@ -248,7 +251,7 @@ def main(**kwargs):
     check_for_update()
 
     mpd_data = get_mpd_data(kwargs["url"])
-    a, v, m, s = process_mpd(mpd_data)
+    a, v, m, s, l = process_mpd(mpd_data)
 
     if kwargs["list_formats"]:
         info(a, v, m, s)
@@ -263,7 +266,7 @@ def main(**kwargs):
         return 0
 
     start_time = (
-        s - timedelta(seconds=m * 2)
+        s - timedelta(seconds=m * l)
         if kwargs["start"] == None
         else parse_datetime(kwargs["start"], kwargs["utc"])
     )
@@ -273,23 +276,24 @@ def main(**kwargs):
         return 0
 
     if kwargs["duration"] == None and kwargs["end"] == None:
-        duration = m * 2
+        duration = m * l
     else:
-        duration = (
-            parse_datetime(kwargs["end"], kwargs["utc"])
-            if kwargs["duration"] == None
-            else parse_duration(kwargs["duration"])
-        )
+        if kwargs["duration"] == None:
+            e_dtime = parse_datetime(kwargs["end"], kwargs["utc"])
+            s_dtime = s if kwargs["start"] == None else parse_datetime(kwargs["start"], kwargs["utc"])
+            duration = (e_dtime - s_dtime).total_seconds()
+        else:
+            duration =  parse_duration(kwargs["duration"])
 
     if duration == -1:
         print("Error: Couldn't parse duration or end date!")
         return 0
 
-    start_segment = m - round((s - start_time).total_seconds() / 2)
+    start_segment = m - round((s - start_time).total_seconds() / l)
     if start_segment < 0:
         start_segment = 0
 
-    end_segment = start_segment + round(duration / 2)
+    end_segment = start_segment + round(duration / l)
     if end_segment > m:
         print("Error: You are requesting segments that dont exist yet!")
         return 0
