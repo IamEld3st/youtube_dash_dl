@@ -34,8 +34,9 @@ yt_ddl <URL> -o <OUTPUT> --start <START_TIME> --duration <DURATION>
 yt_ddl <URL> -o <OUTPUT> --start <START_TIME> --end <END_TIME>
 
 # e.g.
-python yt_ddl.py https://www.youtube.com/watch?v=dQw4w9WgXcQ -o output.mp4 --start 2020-08-12T09:16 --duration 10m
+python yt_ddl.py https://www.youtube.com/watch?v=XXXXXXXXXXX -o output.mp4 --start 2020-08-12T09:16 --duration 10m
 # Will download 10 minute video starting 2020-08-12T09:16
+# Pay attention to the format of the url! exclude any other tags after the video id.
 ```
 
 Yoou can also use:
@@ -74,4 +75,4 @@ Only .mp4 and .mkv output format is supported at the moment.
 
 ## Python compatibility
 
--   3.7+
+-   3.6+
