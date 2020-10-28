@@ -174,7 +174,7 @@ def mux_to_file(output, aud, vid):
 def check_if_exists(output):
     if os.path.exists(output):
         yn = input(f"File '{output}' already exists. Overwrite? [y/N] ").lower()
-        if len(yn) > 0 and yn[0] == "y":
+        if yn and yn[0] == "y":
             os.remove(output)
             return True
         else:
@@ -203,7 +203,7 @@ def parse_datetime(inp, utc=True):
 
 def parse_duration(inp):
     x = re.findall("([0-9]+[hmsHMS])", inp)
-    if len(x) == 0:
+    if not x:
         try:
             number = int(inp)
         except:
