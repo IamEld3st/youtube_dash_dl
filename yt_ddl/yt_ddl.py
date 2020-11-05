@@ -174,7 +174,7 @@ def mux_to_file(output, aud, vid):
 def check_if_exists(output):
     if os.path.exists(output):
         yn = input(f"File '{output}' already exists. Overwrite? [y/N] ").lower()
-        if len(yn) > 0 and yn[0] == "y":
+        if yn and yn[0] == "y":
             os.remove(output)
             return True
         else:
@@ -203,7 +203,7 @@ def parse_datetime(inp, utc=True):
 
 def parse_duration(inp):
     x = re.findall("([0-9]+[hmsHMS])", inp)
-    if len(x) == 0:
+    if not x:
         try:
             number = int(inp)
         except:
@@ -257,7 +257,7 @@ def main(**kwargs):
         info(a, v, m, s)
         return 0
 
-    if kwargs["output"] == None:
+    if kwargs["output"] is None:
         print("Error: Missing option '-o' / '--output'!")
         return 0
 
@@ -267,7 +267,7 @@ def main(**kwargs):
 
     start_time = (
         s - timedelta(seconds=m * l)
-        if kwargs["start"] == None
+        if kwargs["start"] is None
         else parse_datetime(kwargs["start"], kwargs["utc"])
     )
 
@@ -275,12 +275,12 @@ def main(**kwargs):
         print("Error: Couldn't parse start date!")
         return 0
 
-    if kwargs["duration"] == None and kwargs["end"] == None:
+    if kwargs["duration"] is None and kwargs["end"] is None:
         duration = m * l
     else:
-        if kwargs["duration"] == None:
+        if kwargs["duration"] is None:
             e_dtime = parse_datetime(kwargs["end"], kwargs["utc"])
-            s_dtime = s if kwargs["start"] == None else parse_datetime(kwargs["start"], kwargs["utc"])
+            s_dtime = s if kwargs["start"] is None else parse_datetime(kwargs["start"], kwargs["utc"])
             duration = (e_dtime - s_dtime).total_seconds()
         else:
             duration =  parse_duration(kwargs["duration"])
@@ -298,7 +298,7 @@ def main(**kwargs):
         print("Error: You are requesting segments that dont exist yet!")
         return 0
 
-    download_threads = cpu_count() if kwargs['download_threads'] == None else kwargs['download_threads']
+    download_threads = cpu_count() if kwargs['download_threads'] is None else kwargs['download_threads']
     if download_threads > 4:
         # This is here until we figure out how to use youtube cookies as to not get blocked
         download_threads = 4
