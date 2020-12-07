@@ -9,13 +9,22 @@ from io import BytesIO
 from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
 
-import av                                   # av
-import click                                # click
-import pkg_resources                        # setuptools
-from lxml import etree                      # lxml
-from lxml.etree import QName, SubElement    # lxml
-from requests import get                    # requests
-from tqdm import tqdm                       # tqdm
+import av                                               # av
+import click                                            # click
+import pkg_resources                                    # setuptools
+from lxml import etree                                  # lxml
+from lxml.etree import QName, SubElement                # lxml
+import requests                                         # requests
+from requests.adapters import HTTPAdapter               # requests
+from requests.packages.urllib3.util.retry import Retry  # requests
+from tqdm import tqdm                                   # tqdm
+
+s = requests.Session()
+retry = Retry(connect=5, backoff_factor=0.5)
+adapter = HTTPAdapter(max_retries=retry)
+s.mount('http://', adapter)
+s.mount('https://', adapter)
+get = s.get
 
 
 class Stream:
