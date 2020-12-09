@@ -47,9 +47,12 @@ def local_to_utc(dt):
 
 def get_mpd_data(video_url):
     page = get(video_url).text
-    mpd_link = (
-        page.split('dashManifestUrl\\":\\"')[-1].split('\\"')[0].replace("\/", "/")
-    )
+    if 'dashManifestUrl\\":\\"' in page:
+        mpd_link = page.split('dashManifestUrl\\":\\"')[-1].split('\\"')[0].replace("\/", "/")
+    elif 'dashManifestUrl":"' in page:
+        mpd_link = page.split('dashManifestUrl":"')[-1].split('"')[0].replace("\/", "/")
+    else:
+        return None
     return get(mpd_link).text
 
 
@@ -251,6 +254,9 @@ def main(**kwargs):
     check_for_update()
 
     mpd_data = get_mpd_data(kwargs["url"])
+    if mpd_data is None:
+        print("Error: Couldn't get MPD data!")
+        return 0
     a, v, m, s, l = process_mpd(mpd_data)
 
     if kwargs["list_formats"]:
