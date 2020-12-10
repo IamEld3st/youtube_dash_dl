@@ -23,7 +23,7 @@ dependency_links = [x.strip().replace("git+", "") for x in all_reqs if "git+" no
 setup(
     name="youtube_dash_dl",
     description="Tool to download VoD of an ongoing stream without any time limitations.",
-    version="1.0.4",
+    version="1.0.5",
     packages=find_packages(),
     install_requires=install_requires,
     python_requires=">=3.6",
@@ -38,6 +38,6 @@ setup(
     author_email="iameld3st@gmail.com",
     classifiers=[
         "License :: OSI Approved :: MIT License",
-        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.6",
     ],
 )
