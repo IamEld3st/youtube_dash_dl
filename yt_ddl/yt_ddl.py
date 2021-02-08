@@ -26,6 +26,8 @@ s.mount('http://', adapter)
 s.mount('https://', adapter)
 get = s.get
 
+av.logging.set_level(av.logging.PANIC)
+
 
 class Stream:
     def __init__(self, stream_type, bitrate, codec, quality, base_url):
@@ -150,30 +152,26 @@ def mux_to_file(output, aud, vid):
     output_video = output.add_stream(template=v_in)
     output_audio = output.add_stream(template=a_in)
 
-    h_dts = -1
+    last_pts = 0
     for packet in video_p:
         if packet.dts is None:
             continue
-        
-        if h_dts == -1:
-            h_dts = packet.dts
 
-        packet.dts = packet.dts - h_dts
-        packet.pts = packet.dts
+        packet.dts = last_pts
+        packet.pts = last_pts
+        last_pts += packet.duration
 
         packet.stream = output_video
         output.mux(packet)
 
-    h_dts = -1
+    last_pts = 0
     for packet in audio_p:
         if packet.dts is None:
             continue
 
-        if h_dts == -1:
-            h_dts = packet.dts
-
-        packet.dts = packet.dts - h_dts
-        packet.pts = packet.dts
+        packet.dts = last_pts
+        packet.pts = last_pts
+        last_pts += packet.duration
 
         packet.stream = output_audio
         output.mux(packet)
