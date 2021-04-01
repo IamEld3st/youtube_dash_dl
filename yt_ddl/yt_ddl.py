@@ -59,8 +59,6 @@ def local_to_utc(dt):
 
 def get_mpd_data(video_url):
     req = get(video_url)
-    with open("debug.html", "w") as f:
-        f.write(req.text)
     if 'dashManifestUrl\\":\\"' in req.text:
         mpd_link = req.text.split('dashManifestUrl\\":\\"')[-1].split('\\"')[0].replace("\/", "/")
     elif 'dashManifestUrl":"' in req.text:
