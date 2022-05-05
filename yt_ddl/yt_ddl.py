@@ -96,15 +96,15 @@ def process_mpd(mpd_data):
     v_streams = []
     a_streams = []
     for a in attribute_sets:
-        stream_type = a.attrib["mimeType"][0]
+        stream_type = a.attrib["mimeType"][0:2]
         for r in a.findall(".//def:Representation", nsmap):
             bitrate = int(r.attrib["bandwidth"])
             codec = r.attrib["codecs"]
             base_url = r.find(".//def:BaseURL", nsmap).text + "sq/"
-            if stream_type == "a":
+            if stream_type == "au":
                 quality = r.attrib["audioSamplingRate"]
                 a_streams.append(Stream(stream_type, bitrate, codec, quality, base_url))
-            elif stream_type == "v":
+            elif stream_type == "vi":
                 quality = f"{r.attrib['width']}x{r.attrib['height']}"
                 v_streams.append(Stream(stream_type, bitrate, codec, quality, base_url))
     a_streams.sort(key=lambda x: x.bitrate, reverse=True)
